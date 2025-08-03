@@ -1,6 +1,5 @@
 use anyhow::Result;
 use bit_vec::*;
-use bitstream_io::{BitRead, BitReader, Numeric};
 use log::trace;
 use std::fs::File;
 use std::io::{BufReader, Error, Read};
@@ -29,6 +28,7 @@ pub enum Packet {
         fmt: Fmt,
         address: u64,
         notify: bool,
+        updiscon: bool,
     },
     FMT_1 {
         fmt: Fmt,
@@ -36,6 +36,7 @@ pub enum Packet {
         branch_map: u32,
         address: u64,
         notify: bool,
+        updiscon: bool,
     },
 
     None,
@@ -185,17 +186,19 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
         }
         Fmt::Fmt_2 => {
             let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap();
-            let notify: u8 = parse_bits(&mut packet, BRANCH_WIDTH).try_into().unwrap();
+            let notify: u8 = parse_bits(&mut packet, NOTIFY_WIDTH).try_into().unwrap();
+            let updiscon: u8 = parse_bits(&mut packet, UPDISCON_WIDTH).try_into().unwrap();
 
             Ok(Packet::FMT_2 {
                 fmt: (fmt),
                 address: (address << 1),
                 notify: (notify > 0),
+                updiscon: (updiscon > 0)
             })
         }
         Fmt::Fmt_1 => {
             let branches: u8 = parse_bits(&mut packet, BRANCHES_WIDTH).try_into().unwrap();
-            let mut branch_map_width: usize = if (branches <= 4) {
+            let mut branch_map_width: usize = if (branches <= 3) {
                 3
             } else if (branches <= 7) {
                 7
@@ -209,7 +212,8 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
 
             let branch_map: u32 = parse_bits(&mut packet, branch_map_width).to_u32().unwrap();
             let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap();
-            let notify: u8 = parse_bits(&mut packet, BRANCH_WIDTH).try_into().unwrap();
+            let notify: u8 = parse_bits(&mut packet, NOTIFY_WIDTH).try_into().unwrap();
+            let updiscon: u8 = parse_bits(&mut packet, UPDISCON_WIDTH).try_into().unwrap();
 
             Ok(Packet::FMT_1 {
                 fmt: (fmt),
@@ -217,6 +221,7 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
                 branch_map: (branch_map),
                 address: (address << 1),
                 notify: (notify > 0),
+                updiscon: (updiscon > 0)
             })
         }
         Fmt::Fmt_0 => todo!(),

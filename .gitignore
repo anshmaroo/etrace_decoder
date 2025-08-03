@@ -14,3 +14,5 @@ target-rust-analyzer/
 *.json
 *.afdo
 *.log
+*.out
+*.elf

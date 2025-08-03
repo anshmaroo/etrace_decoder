@@ -1,7 +1,7 @@
 pub const FMT_MASK: u8 = 0b0000_0011;
 pub const SUBFMT_MASK: u8 = 0b0000_1100;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 
 pub enum UInt {
     U8(u8),
@@ -29,13 +29,7 @@ macro_rules! impl_tryfrom_uint {
     };
 }
 
-impl_tryfrom_uint!(
-    u8, U8,
-    u16, U16,
-    u32, U32,
-    u64, U64,
-    u128, U128
-);
+impl_tryfrom_uint!(u8, U8, u16, U16, u32, U32, u64, U64, u128, U128);
 
 impl UInt {
     pub fn to_u32(&self) -> Option<u32> {
@@ -49,7 +43,7 @@ impl UInt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Fmt {
     Fmt_3 = 0b11, // sync, trap, context, support
     Fmt_2 = 0b10, // address
@@ -69,7 +63,7 @@ impl From<UInt> for Fmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Subfmt {
     Start = 0b00,
     Trap = 0b01,
@@ -89,7 +83,7 @@ impl From<UInt> for Subfmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Privilege {
     P_U = 0,
     P_S = 1,
@@ -130,4 +124,5 @@ pub const THADDR_WIDTH: usize = 1;
 pub const ADDRESS_WIDTH: usize = 63;
 pub const TVAL_WIDTH: usize = 64;
 pub const NOTIFY_WIDTH: usize = 1;
+pub const UPDISCON_WIDTH: usize = 1;
 pub const BRANCHES_WIDTH: usize = 5;
