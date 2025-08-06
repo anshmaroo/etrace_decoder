@@ -100,6 +100,8 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
         let padding_length = (num_bits_uncompressed - (num_bytes_compressed * 8)) as usize;
         let mut padding = BitVec::with_capacity(padding_length);
 
+        println!("packet compressed: {packet}");
+
         let sign = packet.get((num_bytes_compressed * 8 - 1) as usize);
         if let Some(_sign) = sign {
             for i in 0..padding_length {
@@ -193,25 +195,28 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
                 fmt: (fmt),
                 address: (address << 1),
                 notify: (notify > 0),
-                updiscon: (updiscon > 0)
+                updiscon: (updiscon > 0),
             })
         }
         Fmt::Fmt_1 => {
             let branches: u8 = parse_bits(&mut packet, BRANCHES_WIDTH).try_into().unwrap();
-            let mut branch_map_width: usize = if (branches <= 3) {
+            let mut branch_map_width: usize = if (branches == 0) {
+                31
+            } else if (branches <= 3) {
                 3
             } else if (branches <= 7) {
                 7
             } else if (branches <= 15) {
                 15
-            } else if (branches <= 31) {
-                31
             } else {
-                0
+                31
             };
 
             let branch_map: u32 = parse_bits(&mut packet, branch_map_width).to_u32().unwrap();
-            let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap();
+            let address: u64 = 
+                parse_bits(&mut packet, ADDRESS_WIDTH)
+                    .try_into()
+                    .unwrap();
             let notify: u8 = parse_bits(&mut packet, NOTIFY_WIDTH).try_into().unwrap();
             let updiscon: u8 = parse_bits(&mut packet, UPDISCON_WIDTH).try_into().unwrap();
 
@@ -221,7 +226,7 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
                 branch_map: (branch_map),
                 address: (address << 1),
                 notify: (notify > 0),
-                updiscon: (updiscon > 0)
+                updiscon: (updiscon > 0),
             })
         }
         Fmt::Fmt_0 => todo!(),

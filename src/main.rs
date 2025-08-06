@@ -33,7 +33,7 @@ use frontend::f_header::FHeader;
 
 // file IO
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{self, BufReader, Read, Write};
 // collections
 use std::collections::HashMap;
 // argparse dependency
@@ -131,109 +131,92 @@ fn refund_addr(addr: u64) -> u64 {
     addr << 1
 }
 
-// step until encountering a br/jump
-fn step_bb(pc: u64, insn_map: &HashMap<u64, Insn>, bus: &mut Bus<Entry>, br_mode: &BrMode) -> u64 {
-    let mut pc = pc;
-    let stop_on_ij = *br_mode == BrMode::BrTarget;
-    loop {
-        trace!("stepping bb pc: {:x}", pc);
-        let insn = insn_map.get(&pc).unwrap();
-        bus.broadcast(Entry::new_insn(insn, pc));
-        if stop_on_ij {
-            if insn.is_branch() || insn.is_direct_jump() || insn.is_indirect_jump() {
-                break;
-            } else {
-                pc += insn.len as u64;
-            }
-        } else {
-            if insn.is_branch() || insn.is_indirect_jump() {
-                break;
-            } else if insn.is_direct_jump() {
-                let new_pc =
-                    (pc as i64 + insn.get_imm().unwrap().get_val_signed_imm() as i64) as u64;
-                pc = new_pc;
-            } else {
-                pc += insn.len as u64;
-            }
-        }
-    }
-    pc
-}
-
 fn step_bb_until(
     pc: u64,
     insn_map: &HashMap<u64, Insn>,
-    target_pc: u64,
+    end_pc_offset: u64,
     bus: &mut Bus<Entry>,
 ) -> u64 {
-    // println!("stepping bb from pc: {:x} until pc: {:x}", pc, target_pc);
     let mut pc = pc;
-
     loop {
-        let insn = insn_map.get(&pc).unwrap();
-        bus.broadcast(Entry::new_insn(insn, pc));
-        if insn.is_direct_jump() {
-            let new_pc =
-                    (pc as i64 + insn.get_imm().unwrap().get_val_signed_imm() as i64) as u64;
-                pc = new_pc;
-        }
-        if insn.is_branch() {
-            break;
-        }
-        if pc == target_pc {
-            break;
+        if let Some(insn) = insn_map.get(&pc) {
+            // bus.broadcast(Entry::new_insn(insn, pc));
+            if insn.is_direct_jump() {
+                // use immediate
+                bus.broadcast(Entry::new_insn(insn, pc));
+                pc = pc.wrapping_add(insn.get_imm().unwrap().get_val_signed_imm() as u64);
+            } else if insn.is_branch() {
+                break;
+            } else if insn.is_indirect_jump() {
+                // use the offset and break
+                bus.broadcast(Entry::new_insn(insn, pc));
+                pc = pc.wrapping_add(end_pc_offset);
+                break;
+            } else {
+                bus.broadcast(Entry::new_insn(insn, pc));
+                pc = pc.wrapping_add(insn.len as u64);
+            }
         } else {
-            pc += insn.len as u64;
+            break;
         }
     }
+
     pc
 }
 
-fn step_bb_branch_map(
+fn step_bb_branch_map_address(
     pc: u64,
     insn_map: &HashMap<u64, Insn>,
-    target_pc: u64,
+    end_pc_offset: u64,
+    branch_map: u32,
+    branches: u8,
+    with_address: bool,
     bus: &mut Bus<Entry>,
-    branch_map: u64,
-) -> u64 {
+) -> (u64, u8) {
     let mut pc = pc;
-
-    let mut local_branch_map = branch_map;
-    // let mut local_branch_count = branch_count;
+    let mut local_branches = branches;
     loop {
-        let insn = insn_map.get(&pc).unwrap();
-        bus.broadcast(Entry::new_insn(insn, pc));
-        if insn.is_direct_jump() {
-            let new_pc =
-                    (pc as i64 + insn.get_imm().unwrap().get_val_signed_imm() as i64) as u64;
-                pc = new_pc;
-        }
-        if insn.is_branch() {
-            if (local_branch_map & 1 == 1) {
-                // take branch
-                pc += insn.get_imm().unwrap().get_val_signed_imm() as u64;
-            } else {
-                pc += insn.len as u64;
-            }
-            local_branch_map = local_branch_map >> 1;
-        }
-
-        if insn.is_indirect_jump() {
-            if (local_branch_map & 1 == 1) {
-                // take branch
-                pc += insn.get_src().get("rs1").unwrap().get_val() as u64;
-            } else {
-                pc += insn.len as u64;
-            }
-            local_branch_map = local_branch_map >> 1;
-        }
-        if pc == target_pc {
+        if (local_branches == 0 && !with_address) {
+            println!("address after branches ran out: {:#16x}", pc);
             break;
+        }
+        if let Some(insn) = insn_map.get(&pc) {
+            if insn.is_direct_jump() {
+                bus.broadcast(Entry::new_insn(insn, pc));
+                pc = pc.wrapping_add(insn.get_imm().unwrap().get_val_signed_imm() as u64);
+            } else if insn.is_branch() {
+                if (local_branches > 0) {
+                    println!("pc = {:#16x}", pc);
+                    println!("branch map =  {:b}", branch_map);
+                    println!("branches = {}", local_branches);
+                    let taken = (branch_map & ((1 as u32) << (local_branches - 1))) > 0;
+                    println!("taken = {}", taken);
+
+                    bus.broadcast(Entry::new_insn(insn, pc));
+                    if (taken) {
+                        pc = pc.wrapping_add(insn.get_imm().unwrap().get_val_signed_imm() as u64);
+                    } else {
+                        pc = pc.wrapping_add(insn.len as u64);
+                    }
+
+                    local_branches -= 1;
+                } else {
+                    break;
+                }
+            } else if insn.is_indirect_jump() {
+                bus.broadcast(Entry::new_insn(insn, pc));
+                pc = pc.wrapping_add(end_pc_offset);
+                break;
+            } else {
+                bus.broadcast(Entry::new_insn(insn, pc));
+                pc = pc.wrapping_add(insn.len as u64);
+            }
         } else {
-            pc += insn.len as u64;
+            break;
         }
     }
-    pc
+    println!("branches remaining: {}\n", local_branches);
+    (pc, local_branches)
 }
 
 // frontend decoding packets and pushing entries to the bus
@@ -291,6 +274,9 @@ fn trace_decoder(args: &Args, mut bus: Bus<Entry>) -> Result<()> {
     let mut pc: u64;
     let mut timestamp: u64;
 
+    let mut previous_branches: u8 = 0;
+    let mut remaining_branches: u8 = 0;
+
     match packet {
         frontend::e_packet::Packet::FMT_3 {
             fmt,
@@ -329,7 +315,9 @@ fn trace_decoder(args: &Args, mut bus: Bus<Entry>) -> Result<()> {
                 address,
                 tval,
             } => match subfmt {
-                frontend::encodings::Subfmt::Start => todo!(),
+                frontend::encodings::Subfmt::Start => {
+                    bus.broadcast(Entry::new_timed_event(Event::Start, timestamp, pc, 0))
+                }
                 frontend::encodings::Subfmt::Trap => todo!(),
                 frontend::encodings::Subfmt::Context => todo!(),
                 frontend::encodings::Subfmt::Support => todo!(),
@@ -350,15 +338,46 @@ fn trace_decoder(args: &Args, mut bus: Bus<Entry>) -> Result<()> {
                 notify,
                 updiscon,
             } => {
-                if (branches != 0) {
-                    // use the branch map to handle branch decisions
-                    pc = step_bb_branch_map(pc, &insn_map, address, &mut bus, branch_map as u64);
+                // use the branch map to handle branch decisions
+                println!("parsed packet: {:16x?}", packet);
+                let mut branches_to_resolve: u8;
+
+                if branches == 0 {
+                    branches_to_resolve = 31 - previous_branches + remaining_branches;
+                    (pc, remaining_branches) = step_bb_branch_map_address(
+                        pc,
+                        &insn_map,
+                        address,
+                        branch_map,
+                        branches_to_resolve,
+                        false,
+                        &mut bus,
+                    );
                 } else {
-                    pc = step_bb_until(pc, &insn_map, 0, &mut bus);
+                    branches_to_resolve = branches - previous_branches + remaining_branches;
+                    (pc, remaining_branches) = step_bb_branch_map_address(
+                        pc,
+                        &insn_map,
+                        address,
+                        branch_map,
+                        branches_to_resolve,
+                        true,
+                        &mut bus,
+                    );
                 }
+
+                previous_branches = branches;
             }
             frontend::e_packet::Packet::None => todo!(),
         }
+
+        // print!("Press Enter to continue...");
+        // io::stdout().flush().unwrap(); // Ensure the prompt is displayed
+
+        // let mut buffer = String::new();
+        // io::stdin()
+        //     .read_line(&mut buffer)
+        //     .expect("Failed to read line");
     }
 
     drop(bus);

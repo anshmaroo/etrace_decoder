@@ -1,4 +1,4 @@
-orm# Parse the spike trace and the decoder dump to find any divergence
+# Parse the spike trace and the decoder dump to find any divergence
 
 import argparse
 
