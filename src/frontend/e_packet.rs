@@ -213,10 +213,11 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
             };
 
             let branch_map: u32 = parse_bits(&mut packet, branch_map_width).to_u32().unwrap();
-            let address: u64 = 
-                parse_bits(&mut packet, ADDRESS_WIDTH)
-                    .try_into()
-                    .unwrap();
+            let address: u64 = if (branches != 0) {
+                parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap()
+            } else {
+                0
+            };
             let notify: u8 = parse_bits(&mut packet, NOTIFY_WIDTH).try_into().unwrap();
             let updiscon: u8 = parse_bits(&mut packet, UPDISCON_WIDTH).try_into().unwrap();
 

@@ -177,7 +177,6 @@ fn step_bb_branch_map_address(
     let mut local_branches = branches;
     loop {
         if (local_branches == 0 && !with_address) {
-            println!("address after branches ran out: {:#16x}", pc);
             break;
         }
         if let Some(insn) = insn_map.get(&pc) {
@@ -186,11 +185,7 @@ fn step_bb_branch_map_address(
                 pc = pc.wrapping_add(insn.get_imm().unwrap().get_val_signed_imm() as u64);
             } else if insn.is_branch() {
                 if (local_branches > 0) {
-                    println!("pc = {:#16x}", pc);
-                    println!("branch map =  {:b}", branch_map);
-                    println!("branches = {}", local_branches);
                     let taken = (branch_map & ((1 as u32) << (local_branches - 1))) > 0;
-                    println!("taken = {}", taken);
 
                     bus.broadcast(Entry::new_insn(insn, pc));
                     if (taken) {
@@ -215,7 +210,6 @@ fn step_bb_branch_map_address(
             break;
         }
     }
-    println!("branches remaining: {}\n", local_branches);
     (pc, local_branches)
 }
 
@@ -339,7 +333,6 @@ fn trace_decoder(args: &Args, mut bus: Bus<Entry>) -> Result<()> {
                 updiscon,
             } => {
                 // use the branch map to handle branch decisions
-                println!("parsed packet: {:16x?}", packet);
                 let mut branches_to_resolve: u8;
 
                 if branches == 0 {
