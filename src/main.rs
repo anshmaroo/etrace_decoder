@@ -164,7 +164,7 @@ fn step_bb_until(
     pc
 }
 
-fn step_bb_branch_map_address(
+fn step_bb_branch_map(
     pc: u64,
     insn_map: &HashMap<u64, Insn>,
     end_pc_offset: u64,
@@ -172,7 +172,7 @@ fn step_bb_branch_map_address(
     branches: u8,
     with_address: bool,
     bus: &mut Bus<Entry>,
-) -> (u64, u8) {
+) -> u64 {
     let mut pc = pc;
     let mut local_branches = branches;
     loop {
@@ -184,9 +184,10 @@ fn step_bb_branch_map_address(
                 bus.broadcast(Entry::new_insn(insn, pc));
                 pc = pc.wrapping_add(insn.get_imm().unwrap().get_val_signed_imm() as u64);
             } else if insn.is_branch() {
+                // print!("branch at address: {:#16x}. ", pc);
                 if (local_branches > 0) {
                     let taken = (branch_map & ((1 as u32) << (local_branches - 1))) > 0;
-
+                    // println!("branch map: {:b}, branch #: {}, taken: {}", branch_map, local_branches, taken);
                     bus.broadcast(Entry::new_insn(insn, pc));
                     if (taken) {
                         pc = pc.wrapping_add(insn.get_imm().unwrap().get_val_signed_imm() as u64);
@@ -199,9 +200,11 @@ fn step_bb_branch_map_address(
                     break;
                 }
             } else if insn.is_indirect_jump() {
+                assert_eq!(with_address, true);
                 bus.broadcast(Entry::new_insn(insn, pc));
                 pc = pc.wrapping_add(end_pc_offset);
                 break;
+                
             } else {
                 bus.broadcast(Entry::new_insn(insn, pc));
                 pc = pc.wrapping_add(insn.len as u64);
@@ -210,7 +213,8 @@ fn step_bb_branch_map_address(
             break;
         }
     }
-    (pc, local_branches)
+    // println!();
+    pc
 }
 
 // frontend decoding packets and pushing entries to the bus
@@ -332,34 +336,14 @@ fn trace_decoder(args: &Args, mut bus: Bus<Entry>) -> Result<()> {
                 notify,
                 updiscon,
             } => {
+                // println!("packet: {} at pc = {:#16x}",packet_count + 1, pc);
                 // use the branch map to handle branch decisions
-                let mut branches_to_resolve: u8;
-
-                if branches == 0 {
-                    branches_to_resolve = 31 - previous_branches + remaining_branches;
-                    (pc, remaining_branches) = step_bb_branch_map_address(
-                        pc,
-                        &insn_map,
-                        address,
-                        branch_map,
-                        branches_to_resolve,
-                        false,
-                        &mut bus,
-                    );
+                if (branches == 0) {
+                    pc = step_bb_branch_map(pc, &insn_map, address, branch_map, 31, false, &mut bus)
                 } else {
-                    branches_to_resolve = branches - previous_branches + remaining_branches;
-                    (pc, remaining_branches) = step_bb_branch_map_address(
-                        pc,
-                        &insn_map,
-                        address,
-                        branch_map,
-                        branches_to_resolve,
-                        true,
-                        &mut bus,
-                    );
+                    pc = step_bb_branch_map(pc, &insn_map, address, branch_map, branches, true, &mut bus)
                 }
-
-                previous_branches = branches;
+                
             }
             frontend::e_packet::Packet::None => todo!(),
         }

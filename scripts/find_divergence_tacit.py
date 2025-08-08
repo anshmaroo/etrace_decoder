@@ -48,7 +48,13 @@ def find_first_divergence(reference, created):
             return count, ref, crt
         count += 1
 
-    print("No divergence found. Files match up to the length of the shorter file.")
+    min_len = min(len(reference), len(created))
+    if len(reference) < len(created):
+        print(f"No divergence found. Reference file is shorter with {len(reference)} lines.")
+    elif len(created) < len(reference):
+        print(f"No divergence found. Created file is shorter with {len(created)} lines.")
+    else:
+        print("No divergence found. Files match and are of the same length.")
     return count, None, None
 
 if __name__ == '__main__':

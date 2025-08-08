@@ -3,6 +3,9 @@
 debug/
 target/
 target-rust-analyzer/
+traces/
+trace\ outputs/
+binaries/
 
 .vscode/
 

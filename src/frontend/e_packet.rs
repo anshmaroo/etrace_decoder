@@ -100,8 +100,6 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
         let padding_length = (num_bits_uncompressed - (num_bytes_compressed * 8)) as usize;
         let mut padding = BitVec::with_capacity(padding_length);
 
-        println!("packet compressed: {packet}");
-
         let sign = packet.get((num_bytes_compressed * 8 - 1) as usize);
         if let Some(_sign) = sign {
             for i in 0..padding_length {
