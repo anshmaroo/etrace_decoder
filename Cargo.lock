@@ -365,6 +365,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "etrace-decoder"
+version = "0.1.0"
+dependencies = [
+ "addr2line",
+ "anyhow",
+ "bit-vec 0.8.0",
+ "bus",
+ "clap",
+ "env_logger 0.10.2",
+ "gcno_reader",
+ "indexmap",
+ "jsonschema",
+ "log",
+ "object",
+ "rvdasm",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -865,26 +885,6 @@ name = "log"
 version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
-
-[[package]]
-name = "ltrace-decoder"
-version = "0.1.0"
-dependencies = [
- "addr2line",
- "anyhow",
- "bit-vec 0.8.0",
- "bus",
- "clap",
- "env_logger 0.10.2",
- "gcno_reader",
- "indexmap",
- "jsonschema",
- "log",
- "object",
- "rvdasm",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "memchr"

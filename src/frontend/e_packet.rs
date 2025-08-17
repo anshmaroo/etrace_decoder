@@ -1,6 +1,7 @@
 use anyhow::Result;
 use bit_vec::*;
 use log::trace;
+use core::num;
 use std::fs::File;
 use std::io::{BufReader, Error, Read};
 use std::num::NonZero;
@@ -61,17 +62,26 @@ fn read_u16(stream: &mut BufReader<File>) -> Result<u16> {
     Ok(u16::from_le_bytes(buf))
 }
 
-fn parse_bits(vector: &mut BitVec, num_bits: usize) -> UInt {
-    assert!(
-        num_bits <= 128 && num_bits <= vector.len(),
-        "Invalid bit count"
-    );
-
+fn parse_bits(vector: &mut BitVec, num_bits: usize, sign: bool) -> UInt {
     let mut value: u128 = 0;
-    for i in 0..num_bits {
-        value = value | (vector[i] as u128) << i;
+    if (num_bits >= vector.len()) {
+        let remaining = num_bits - vector.len();
+        for i in 0..vector.len() {
+            value = value | (vector[i] as u128) << i;
+        }
+
+        for i in vector.len()..num_bits {
+            value = value | (sign as u128) << i;
+        }
+
+        *vector = vector.split_off(vector.len());
+        
+    } else {
+        for i in 0..num_bits {
+            value = value | (vector[i] as u128) << i;
+        }
+        *vector = vector.split_off(num_bits);
     }
-    *vector = vector.split_off(num_bits);
 
     match num_bits {
         0..=8 => UInt::U8(value as u8),
@@ -81,51 +91,37 @@ fn parse_bits(vector: &mut BitVec, num_bits: usize) -> UInt {
         _ => UInt::U128(value),
     }
 }
-
 pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
-    let num_bytes_compressed: u16 = read_u8(stream)? as u16;
-    let num_bits_uncompressed: u16 = read_u16(stream)?;
+    let num_bytes_compressed: u8 = read_u8(stream)?;
     let mut buf = vec![0u8; num_bytes_compressed as usize];
 
     stream.read_exact(&mut buf)?;
 
-    // reverse each byte (bitvector will, as a result, be LSB first)
+    // println!("number of bytes: {num_bytes_compressed}");
+
+    // reverse each byte (bitvector will, as a result, be LSB first )
     for i in 0..buf.len() {
         buf[i] = u8::reverse_bits(buf[i]);
     }
 
-    // convert the compressed packet to a bit vector. add (or remove) padding to reconstruct the original packet
+    // convert the compressed packet to a bit vector
     let mut packet = BitVec::from_bytes(&buf);
-    if (num_bits_uncompressed >= num_bytes_compressed * 8) {
-        let padding_length = (num_bits_uncompressed - (num_bytes_compressed * 8)) as usize;
-        let mut padding = BitVec::with_capacity(padding_length);
-
-        let sign = packet.get((num_bytes_compressed * 8 - 1) as usize);
-        if let Some(_sign) = sign {
-            for i in 0..padding_length {
-                padding.push(_sign);
-            }
-        }
-
-        packet.append(&mut padding);
-    } else {
-        packet.truncate(num_bits_uncompressed as usize);
-    }
+    let mut sign = packet[packet.len() - 1]; // for sign extension
 
     // start parsing
-    let fmt: Fmt = Fmt::from(parse_bits(&mut packet, FMT_WIDTH));
+    let fmt: Fmt = Fmt::from(parse_bits(&mut packet, FMT_WIDTH, sign));
 
     match fmt {
         Fmt::Fmt_3 => {
-            let subfmt = Subfmt::from(parse_bits(&mut packet, SUBFMT_WIDTH));
+            let subfmt = Subfmt::from(parse_bits(&mut packet, SUBFMT_WIDTH, sign));
 
             match subfmt {
                 Subfmt::Start => {
-                    let branch: u8 = parse_bits(&mut packet, BRANCH_WIDTH).try_into().unwrap();
+                    let branch: u8 = parse_bits(&mut packet, BRANCH_WIDTH, sign).try_into().unwrap();
                     let privilege: Privilege =
-                        parse_bits(&mut packet, PRIVILEGE_WIDTH).try_into().unwrap();
-                    let time: u64 = parse_bits(&mut packet, TIME_WIDTH).try_into().unwrap();
-                    let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap();
+                        parse_bits(&mut packet, PRIVILEGE_WIDTH, sign).try_into().unwrap();
+                    let time: u64 = parse_bits(&mut packet, TIME_WIDTH, sign).try_into().unwrap();
+                    let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH, sign).try_into().unwrap();
                     Ok(Packet::FMT_3 {
                         fmt: (fmt),
                         subfmt: (subfmt),
@@ -140,16 +136,16 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
                     })
                 }
                 Subfmt::Trap => {
-                    let branch: u8 = parse_bits(&mut packet, BRANCH_WIDTH).try_into().unwrap();
+                    let branch: u8 = parse_bits(&mut packet, BRANCH_WIDTH, sign).try_into().unwrap();
                     let privilege: Privilege =
-                        parse_bits(&mut packet, PRIVILEGE_WIDTH).try_into().unwrap();
-                    let time: u64 = parse_bits(&mut packet, TIME_WIDTH).try_into().unwrap();
-                    let ecause: u8 = parse_bits(&mut packet, ECAUSE_WIDTH).try_into().unwrap();
+                        parse_bits(&mut packet, PRIVILEGE_WIDTH, sign).try_into().unwrap();
+                    let time: u64 = parse_bits(&mut packet, TIME_WIDTH, sign).try_into().unwrap();
+                    let ecause: u8 = parse_bits(&mut packet, ECAUSE_WIDTH, sign).try_into().unwrap();
                     let interrupt: u8 =
-                        parse_bits(&mut packet, INTERRUPT_WIDTH).try_into().unwrap();
-                    let thaddr: u8 = parse_bits(&mut packet, THADDR_WIDTH).try_into().unwrap();
-                    let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap();
-                    let tval: u64 = parse_bits(&mut packet, TVAL_WIDTH).try_into().unwrap();
+                        parse_bits(&mut packet, INTERRUPT_WIDTH, sign).try_into().unwrap();
+                    let thaddr: u8 = parse_bits(&mut packet, THADDR_WIDTH, sign).try_into().unwrap();
+                    let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH, sign).try_into().unwrap();
+                    let tval: u64 = parse_bits(&mut packet, TVAL_WIDTH, sign).try_into().unwrap();
                     Ok(Packet::FMT_3 {
                         fmt: (fmt),
                         subfmt: (subfmt),
@@ -165,8 +161,8 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
                 }
                 Subfmt::Context => {
                     let privilege: Privilege =
-                        parse_bits(&mut packet, PRIVILEGE_WIDTH).try_into().unwrap();
-                    let time: u64 = parse_bits(&mut packet, TIME_WIDTH).try_into().unwrap();
+                        parse_bits(&mut packet, PRIVILEGE_WIDTH, sign).try_into().unwrap();
+                    let time: u64 = parse_bits(&mut packet, TIME_WIDTH, sign).try_into().unwrap();
 
                     Ok(Packet::FMT_3 {
                         fmt: (fmt),
@@ -185,9 +181,9 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
             }
         }
         Fmt::Fmt_2 => {
-            let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap();
-            let notify: u8 = parse_bits(&mut packet, NOTIFY_WIDTH).try_into().unwrap();
-            let updiscon: u8 = parse_bits(&mut packet, UPDISCON_WIDTH).try_into().unwrap();
+            let address: u64 = parse_bits(&mut packet, ADDRESS_WIDTH, sign).try_into().unwrap();
+            let notify: u8 = parse_bits(&mut packet, NOTIFY_WIDTH, sign).try_into().unwrap();
+            let updiscon: u8 = parse_bits(&mut packet, UPDISCON_WIDTH, sign).try_into().unwrap();
 
             Ok(Packet::FMT_2 {
                 fmt: (fmt),
@@ -197,7 +193,7 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
             })
         }
         Fmt::Fmt_1 => {
-            let branches: u8 = parse_bits(&mut packet, BRANCHES_WIDTH).try_into().unwrap();
+            let branches: u8 = parse_bits(&mut packet, BRANCHES_WIDTH, sign).try_into().unwrap();
             let mut branch_map_width: usize = if (branches == 0) {
                 31
             } else if (branches <= 3) {
@@ -210,14 +206,23 @@ pub fn read_packet(stream: &mut BufReader<File>) -> Result<Packet> {
                 31
             };
 
-            let branch_map: u32 = parse_bits(&mut packet, branch_map_width).to_u32().unwrap();
+            let branch_map: u32 = parse_bits(&mut packet, branch_map_width, sign).to_u32().unwrap();
             let address: u64 = if (branches != 0) {
-                parse_bits(&mut packet, ADDRESS_WIDTH).try_into().unwrap()
+                parse_bits(&mut packet, ADDRESS_WIDTH, sign).try_into().unwrap()
             } else {
                 0
             };
-            let notify: u8 = parse_bits(&mut packet, NOTIFY_WIDTH).try_into().unwrap();
-            let updiscon: u8 = parse_bits(&mut packet, UPDISCON_WIDTH).try_into().unwrap();
+
+            let notify: u8 = if (address != 0) {
+                parse_bits(&mut packet, NOTIFY_WIDTH, sign).try_into().unwrap()
+            } else {
+                0
+            };
+            let updiscon: u8 = if (address != 0) {
+                parse_bits(&mut packet, UPDISCON_WIDTH, sign).try_into().unwrap()
+            } else {
+                0
+            };
 
             Ok(Packet::FMT_1 {
                 fmt: (fmt),

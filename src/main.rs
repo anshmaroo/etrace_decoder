@@ -65,6 +65,8 @@ use anyhow::Result;
 // logging
 use log::{debug, trace};
 
+use crate::frontend::e_packet::Packet;
+
 const BRANCH_OPCODES: &[&str] = &[
     "beq", "bge", "bgeu", "blt", "bltu", "bne", "beqz", "bnez", "bgez", "blez", "bltz", "bgtz",
     "bgt", "ble", "bgtu", "bleu", "c.beqz", "c.bnez", "c.bltz", "c.bgez",
@@ -262,18 +264,12 @@ fn trace_decoder(args: &Args, mut bus: Bus<Entry>) -> Result<()> {
     let encoded_trace_file = File::open(args.encoded_trace.clone())?;
     let mut encoded_trace_reader: BufReader<File> = BufReader::new(encoded_trace_file);
 
-    let mut bp_counter = BpDoubleSaturatingCounter::new(args.bp_entries);
-
     let br_mode = BrMode::from(args.br_mode);
-    let mode_is_predict = br_mode == BrMode::BrPredict || br_mode == BrMode::BrHistory;
 
     let packet = frontend::e_packet::read_packet(&mut encoded_trace_reader)?;
     let mut packet_count = 0;
     let mut pc: u64;
     let mut timestamp: u64;
-
-    let mut previous_branches: u8 = 0;
-    let mut remaining_branches: u8 = 0;
 
     match packet {
         frontend::e_packet::Packet::FMT_3 {
@@ -471,3 +467,6 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+
+

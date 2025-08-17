@@ -5,10 +5,10 @@ members = [
 ]
 
 [package]
-name = "ltrace-decoder"
+name = "etrace-decoder"
 version = "0.1.0"
 edition = "2021"
-authors = ["iansseijelly"]
+authors = ["anshmaroo, iansseijelly"]
 
 
 [dependencies]
